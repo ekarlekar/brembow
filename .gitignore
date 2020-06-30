@@ -1,0 +1,4 @@
+*.pyc
+*.sw[pmno]
+.DS_Store
+brembow.egg-info
