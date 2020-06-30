@@ -1,77 +1,51 @@
 import numpy as np
-from math import sin, cos
 from pyquaternion import Quaternion
+from biopandas.pdb import PandasPdb
+import glob
+import os
+import pandas as pd
+from scipy.spatial.transform import Rotation as R
+
 
 class Cage:
     # list of locations in 3D
-    def __init__(self, locations):
-
-        self.locations = np.array(locations, np.float32)
-
-        self.theta_z = 0.0
-        self.theta_y = 0.0
-        self.theta_x = 0.0
-
+    def __init__(self, cage_folder):
+        self.locations = self.get_atom_locations(cage_folder, "HETATM", "U")
         self.rotation_changed = False
         self.rotated = self.locations
+        self.quaternion = None
 
     def get_locations(self):
 
-        if rotation_changed:
-
+        if self.rotation_changed:
             self.rotated = np.array(self.locations)
-            q1 = Quaternion(axis=[1,0,0], angle=self.theta_x)
-            q2 = Quaternion(axis=[0,1,0], angle=self.theta_y)
-            q3 = Quaternion(axis=[0,0,1], angle=self.theta_z)
-            q  = q1*q2*q3
-            self.rotated = q.rotate(self.rotated)
-            '''if self.theta_z != 0:
-                self.rotate_z(self.rotated, self.theta_z)
-            if self.theta_y != 0:
-                self.rotate_y(self.rotated, self.theta_y)
-            if self.theta_x != 0:
-                self.rotate_x(self.rotated, self.theta_x)'''
+
+            # apply the rotation using scipy
+            r = R.from_quat(self.quaternion.elements)
+            self.rotated = r.apply(self.rotated)
 
             self.rotation_changed = False
 
         return self.rotated
 
-    def set_rotation(self, theta_z, theta_y, theta_x):
-
-        self.theta_z = theta_z
-        self.theta_y = theta_y
-        self.theta_x = theta_x
-
+    def set_random_rotation(self):
+        self.quaternion = Quaternion.random()
         self.rotation_changed = True
 
-'''    def rotate_z(self, locations, theta):
-        sin_theta = sin(theta)
-        cos_theta = cos(theta)
+    def get_atom_locations(self, cage_folder, record_name, atom_name):
 
-        for n in range(len(locations)):
-            node = locations[n]
-            x = node[2]
-            y = node[1]
-            node[2] = x * cos_theta - y * sin_theta
-            node[1] = y * cos_theta + x * sin_theta
+        # Creates list of .pdb file names
+        pdb_files = glob.glob(os.path.join(cage_folder, '*.pdb'))
 
-    def rotate_y(self, locations, theta):
-        sin_theta = sin(theta)
-        cos_theta = cos(theta)
-        for n in range(len(locations)):
-            node = locations[n]
-            x = node[2]
-            z = node[0]
-            node[2] = x * cos_theta + z * sin_theta
-            node[0] = z * cos_theta - x * sin_theta
+        list_file_df = []
 
-    def rotate_x(self, locations, theta):
-        sin_theta = sin(theta)
-        cos_theta = cos(theta)
+        for file_name in pdb_files:
+            ppdb = PandasPdb().read_pdb(file_name)
+            list_file_df.append(ppdb.df[record_name])
+        big_df = pd.concat(list_file_df)
 
-        for n in range(len(locations)):
-            node = locations[n]
-            y = node[1]
-            z = node[0]
-            node[1] = y * cos_theta - z * sin_theta
-            node[0] = z * cos_theta + y * sin_theta '''
+        atoms_df = big_df.loc[big_df['atom_name'] == atom_name]
+        atom_location_matrix = atoms_df[["z_coord",
+                                         "y_coord",
+                                         "x_coord"]].to_numpy()
+        return atom_location_matrix
