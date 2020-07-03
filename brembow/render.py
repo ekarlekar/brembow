@@ -1,9 +1,8 @@
 import numpy as np
-import scipy
 from .volume import Volume
 
 
-def render_points(resolution, image, locations, sigma):
+def render_points(resolution, image, locations, point_spread_function):
     '''Render a list of points with a Gaussian point-spread-function into a 2D
     image. This rendering is subtractive with respect to the contents already
     present in the image.
@@ -16,8 +15,8 @@ def render_points(resolution, image, locations, sigma):
         locations (list of tuple of floats): The locations (in pixels)
         where to place the points.
 
-        sigma (float): The standard deviation of the Gaussian
-        point-spread-function.
+        point_spread_function (PointSpreadFunction): The point-spread function
+        to use.
     '''
     # now between -1 and 1 to account for modified images from render_cage
     assert(image.min() >= 0 and image.max() <= 1)
@@ -35,12 +34,8 @@ def render_points(resolution, image, locations, sigma):
     # x, y = int(location[0]/resolution), int(location[1]/resolution)
     point_image[tuple(coords)] = 1.0
 
-    # blurs the image according to the Gaussian psf
-    scipy.ndimage.gaussian_filter(
-        point_image,
-        sigma,
-        output=point_image,
-        truncate=3.0)
+    # blurs image according to appropriate PSF
+    point_spread_function.apply_psf(point_image)
 
     # subract point image from original image
     image -= point_image
@@ -49,7 +44,7 @@ def render_points(resolution, image, locations, sigma):
     np.clip(image, 0.0, 1.0, out=image)
 
 
-def render_cage(volume, location, cage, sigma):
+def render_cage(volume, location, cage, point_spread_function):
     '''Render a cage with a Gaussian point-spread-function into a 3D volume.
     This rendering is subtractive with respect to the contents already present
     in the volume.
@@ -84,10 +79,11 @@ def render_cage(volume, location, cage, sigma):
         render_points(volume.resolution,
                       volume.data[zplane, :, :],
                       valid_locs[:, 1:3],
-                      sigma)
+                      point_spread_function)
 
 
-def render_cage_distribution(volume, cage, sigma, density, mask=None):
+def render_cage_distribution(volume, cage,
+                             point_spread_function, density, mask=None):
     '''Renders randomly oriented copies of the given cage with the given
     density into volume.
 
@@ -108,7 +104,7 @@ def render_cage_distribution(volume, cage, sigma, density, mask=None):
         is > 0.
     '''
     depth, height, width = volume.data.shape
-    # TODO: should be in points per micron
+    # TODO: should be in points per micron (volume.resolution)
     num_expected_points = int(density*(depth*height*width))
 
     locations = (
@@ -121,16 +117,19 @@ def render_cage_distribution(volume, cage, sigma, density, mask=None):
         voxel_locations = locations/mask.resolution
         voxel_locations = voxel_locations.astype(np.int32)
         mask_depth, mask_height, mask_width = mask.data.shape
-        voxel_locations[:, 0] = np.clip(voxel_locations[:, 0], 0, mask_depth - 1)
-        voxel_locations[:, 1] = np.clip(voxel_locations[:, 1], 0, mask_height - 1)
-        voxel_locations[:, 2] = np.clip(voxel_locations[:, 2], 0, mask_width - 1)
+        voxel_locations[:, 0] = np.clip(voxel_locations[:, 0],
+                                        0, mask_depth - 1)
+        voxel_locations[:, 1] = np.clip(voxel_locations[:, 1],
+                                        0, mask_height - 1)
+        voxel_locations[:, 2] = np.clip(voxel_locations[:, 2],
+                                        0, mask_width - 1)
 
-        indices = (
-            voxel_locations[:, 0]*mask_height*mask_width +
-            voxel_locations[:, 1]*mask_width +
-            voxel_locations[:, 2])
-        valid = mask.flatten()[indices].astype(np.bool)
-        locations = locations[valid]
+        z_values = voxel_locations[:, 0]
+        y_values = voxel_locations[:, 1]
+        x_values = voxel_locations[:, 2]
+        valid = [tuple(z_values), tuple(y_values), tuple(x_values)]
+
+        locations = locations[tuple(valid)]
 
     # for each location:
     for loc in locations:
@@ -139,10 +138,11 @@ def render_cage_distribution(volume, cage, sigma, density, mask=None):
         cage.set_random_rotation()
 
         # render cage
-        render_cage(volume, loc, cage, sigma)
+        render_cage(volume, loc, cage, point_spread_function)
 
 
-def simulate_cages(volume, segmentation, cages, densities, sigma):
+def simulate_cages(volume, segmentation,
+                   cages, densities, point_spread_function):
     '''Render different cages with different densities into each segment.
 
     Args:
@@ -186,4 +186,5 @@ def simulate_cages(volume, segmentation, cages, densities, sigma):
         mask = Volume(mask_data, segmentation.resolution)
 
         # call render_cage_distribution with the correct cage and density
-        render_cage_distribution(volume, cage, sigma, density, mask)
+        render_cage_distribution(volume, cage,
+                                 point_spread_function, density, mask)
