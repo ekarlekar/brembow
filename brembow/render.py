@@ -9,6 +9,8 @@ def render_points(resolution, image, locations, point_spread_function):
 
     Args:
 
+        resolution (tuple of two floats): The yx resolution of the image.
+
         image (ndarray): The image to render to. The image is expected to real
         valued with values between 0 and 1.
 
