@@ -105,7 +105,7 @@ def render_cage_distribution(volume, cage,
     '''
     depth, height, width = volume.data.shape
     # TODO: should be in points per micron (volume.resolution)
-    num_expected_points = int(density*(depth*height*width))
+    num_expected_points = int(density*(depth*height*width*volume.resolution))
 
     locations = (
         np.random.random((num_expected_points, 3)) *
