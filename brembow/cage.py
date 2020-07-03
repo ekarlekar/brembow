@@ -48,4 +48,8 @@ class Cage:
         atom_location_matrix = atoms_df[["z_coord",
                                          "y_coord",
                                          "x_coord"]].to_numpy()
+
+        # all the locations are in Ångström, convert them to nm
+        atom_location_matrix /= 10.0
+
         return atom_location_matrix
