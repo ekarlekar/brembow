@@ -52,4 +52,8 @@ class Cage:
         # all the locations are in Ångström, convert them to nm
         atom_location_matrix /= 10.0
 
+        # center cage at (0, 0, 0)
+        center = np.mean(atom_location_matrix, axis=0)
+        atom_location_matrix -= center
+
         return atom_location_matrix
