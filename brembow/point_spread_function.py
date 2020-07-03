@@ -1,4 +1,4 @@
-import scipy
+from scipy.ndimage import gaussian_filter
 
 
 class PointSpreadFunction:
@@ -15,7 +15,7 @@ class GaussianPSF(PointSpreadFunction):
         self.sigma = sigma
 
     def apply_psf(self, point_image):
-        scipy.ndimage.gaussian_filter(
+        gaussian_filter(
             point_image,
             self.sigma,
             output=point_image,
