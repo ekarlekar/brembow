@@ -1,7 +1,7 @@
 import scipy
 
 
-class Point_Spread_Function:
+class PointSpreadFunction:
     def __init__(self, *args, **kwargs):
         pass
 
@@ -9,7 +9,7 @@ class Point_Spread_Function:
         pass
 
 
-class Gaussian_PSF(Point_Spread_Function):
+class GaussianPSF(PointSpreadFunction):
     def __init__(self, intensity, sigma):
         self.intensity = intensity
         self.sigma = sigma
