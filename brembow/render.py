@@ -68,15 +68,19 @@ def render_cage(volume, location, cage, point_spread_function):
     cage_point_locs = pre_norm_cage_loc + location
 
     depth, height, width = volume.data.shape
+    resolution = volume.resolution
 
     for zplane in range(0, depth):
-        valid_locs = cage_point_locs[(cage_point_locs[:, 0] >= zplane) &
-                                     (cage_point_locs[:, 0] < (zplane + 1)) &
-                                     (cage_point_locs[:, 1] >= 0) &
-                                     (cage_point_locs[:, 1] < height) &
-                                     (cage_point_locs[:, 2] >= 0) &
-                                     (cage_point_locs[:, 2] < width)]
-        render_points(volume.resolution,
+        zbegin, zend = zplane*resolution[0], (zplane + 1)*resolution[0]
+        ybegin, yend = 0, height*resolution[1]
+        xbegin, xend = 0, height*resolution[2]
+        valid_locs = cage_point_locs[(cage_point_locs[:, 0] >= zbegin) &
+                                     (cage_point_locs[:, 0] < zend) &
+                                     (cage_point_locs[:, 1] >= ybegin) &
+                                     (cage_point_locs[:, 1] < yend) &
+                                     (cage_point_locs[:, 2] >= xbegin) &
+                                     (cage_point_locs[:, 2] < xend)]
+        render_points(volume.resolution[1:3],
                       volume.data[zplane, :, :],
                       valid_locs[:, 1:3],
                       point_spread_function)
