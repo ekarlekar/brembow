@@ -1,5 +1,7 @@
-import numpy as np
 from .volume import Volume
+import numpy as np
+import random
+import timeit
 
 
 def render_points(resolution, image, locations, point_spread_function):
@@ -110,16 +112,18 @@ def render_cage_distribution(volume, cage,
         is > 0.
     '''
     depth, height, width = volume.data.shape
+    num_voxels = depth*height*width
+    vol = num_voxels*np.prod(volume.resolution)
     # TODO: should be in points per micron (volume.resolution)
-    num_expected_points = int(density*(depth*height*width*volume.resolution))
+    num_expected_points = int(density*vol)
 
     locations = (
-        np.random.random((num_expected_points, 3)) *
-        [depth, height, width]
+        np.random.random((num_expected_points, 3))*[depth, height, width]
     )
 
     # filter locations by mask (if given)
     if(mask is not None):
+
         voxel_locations = locations/mask.resolution
         voxel_locations = voxel_locations.astype(np.int32)
         mask_depth, mask_height, mask_width = mask.data.shape
@@ -133,9 +137,11 @@ def render_cage_distribution(volume, cage,
         z_values = voxel_locations[:, 0]
         y_values = voxel_locations[:, 1]
         x_values = voxel_locations[:, 2]
-        valid = [tuple(z_values), tuple(y_values), tuple(x_values)]
+        coords = [tuple(z_values), tuple(y_values), tuple(x_values)]
+        valid = mask.data[tuple(coords)].astype(np.bool)
+        locations = locations[valid]
 
-        locations = locations[tuple(valid)]
+    print("len of locations:" + str(len(locations)))
 
     # for each location:
     for loc in locations:
@@ -168,11 +174,14 @@ def simulate_cages(volume, segmentation,
         point-spread-function.
     '''
     # which IDs do we have in the segmentation? (can we use numpy?)
-    id_list = np.nonzero(np.unique(segmentation.data))
+    id_list = np.unique(segmentation.data)
+    id_list = id_list[np.nonzero(id_list)]
 
+    print("len of id_list" + str(len(id_list)))
+    count = 0
     # for each segment ID:
     for id_element in id_list:
-
+        start_time = timeit.default_timer()
         # find appropriate cage and density
         cage = cages.get(id_element)
         density = densities.get(id_element)
@@ -190,7 +199,59 @@ def simulate_cages(volume, segmentation,
         # create a binary mask
         mask_data = np.where(segmentation.data == id_element, 1, 0)
         mask = Volume(mask_data, segmentation.resolution)
-
+        print(str(density), str(cage))
         # call render_cage_distribution with the correct cage and density
         render_cage_distribution(volume, cage,
                                  point_spread_function, density, mask)
+        elapsed = timeit.default_timer() - start_time
+        print("elapsed time:" + str(elapsed))
+        if(count % 50 == 0):
+            print("another 50 done", count)
+
+        count += 1
+
+
+def simulate_random_cages(
+        volume,
+        segmentation,
+        cages,
+        min_density,
+        max_density,
+        point_spread_function):
+    '''Randomly render cages with a range of densities for each segment into a
+    volume.
+
+    Args:
+
+        volume (Volume): The volume to render to. The volume is expected to be
+        real valued with values between 0 and 1.
+
+        segmentation (Volume): A segmentation of the volume. The segmentation
+        is expected to be int valued with values between 1 and n. 0 will be
+        treated as background.
+
+        cages (list of Cages): A list of cages to randomly select from.
+
+        min_density, max_density (float): The minimum and maximum density to
+        uniformly choose from.
+
+        point_spread_function (PointSpreadFunction): The PSF to use to render
+        points.
+    '''
+
+    id_list = np.unique(segmentation.data)
+    id_list = id_list[np.nonzero(id_list)]
+
+    random_cages = {}
+    random_densities = {}
+
+    for id_element in id_list:
+        random_cages[id_element] = random.choice(cages)
+        random_densities[id_element] = random.uniform(min_density, max_density)
+
+    simulate_cages(
+        volume,
+        segmentation,
+        random_cages,
+        random_densities,
+        point_spread_function)
