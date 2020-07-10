@@ -1,7 +1,6 @@
 from .volume import Volume
 import numpy as np
 import random
-import timeit
 
 
 def render_points(resolution, image, locations, point_spread_function):
@@ -22,18 +21,29 @@ def render_points(resolution, image, locations, point_spread_function):
         point_spread_function (PointSpreadFunction): The point-spread function
         to use.
     '''
-    # now between -1 and 1 to account for modified images from render_cage
-    assert(image.min() >= 0 and image.max() <= 1)
-
-    point_image = np.zeros_like(image)
 
     # for each point, change point image to 1.0
     locations = np.array(locations)/resolution
     locations = locations.astype(int)
 
+    # limit image to area affected by locations
+    radius = np.ceil(point_spread_function.get_radius()/resolution).astype(int)
+    bounding_box_min = np.min(locations, axis=0) - radius
+    bounding_box_max = np.max(locations, axis=0) + radius
+    bounding_box_min, bounding_box_max = np.clip(
+        [bounding_box_min, bounding_box_max],
+        [0, 0],
+        [image.shape[0] - 1, image.shape[1] - 1])
+    image = image[
+        bounding_box_min[0]:bounding_box_max[0] + 1,
+        bounding_box_min[1]:bounding_box_max[1] + 1]
+
+    locations -= bounding_box_min
     x_values = locations[:, 0]
     y_values = locations[:, 1]
     coords = [tuple(x_values), tuple(y_values)]
+
+    point_image = np.zeros_like(image)
 
     # x, y = int(location[0]/resolution), int(location[1]/resolution)
     point_image[tuple(coords)] = 1.0
@@ -84,6 +94,9 @@ def render_cage(volume, location, cage, point_spread_function):
                                      (cage_point_locs[:, 1] < yend) &
                                      (cage_point_locs[:, 2] >= xbegin) &
                                      (cage_point_locs[:, 2] < xend)]
+        if len(valid_locs) == 0:
+            continue
+
         render_points(volume.resolution[1:3],
                       volume.data[zplane, :, :],
                       valid_locs[:, 1:3],
@@ -123,25 +136,9 @@ def render_cage_distribution(volume, cage,
 
     # filter locations by mask (if given)
     if(mask is not None):
+        locations = filter_locations(volume, mask, locations)
 
-        voxel_locations = locations/mask.resolution
-        voxel_locations = voxel_locations.astype(np.int32)
-        mask_depth, mask_height, mask_width = mask.data.shape
-        voxel_locations[:, 0] = np.clip(voxel_locations[:, 0],
-                                        0, mask_depth - 1)
-        voxel_locations[:, 1] = np.clip(voxel_locations[:, 1],
-                                        0, mask_height - 1)
-        voxel_locations[:, 2] = np.clip(voxel_locations[:, 2],
-                                        0, mask_width - 1)
-
-        z_values = voxel_locations[:, 0]
-        y_values = voxel_locations[:, 1]
-        x_values = voxel_locations[:, 2]
-        coords = [tuple(z_values), tuple(y_values), tuple(x_values)]
-        valid = mask.data[tuple(coords)].astype(np.bool)
-        locations = locations[valid]
-
-    print("len of locations:" + str(len(locations)))
+    print("len of locations: " + str(len(locations)))
 
     # for each location:
     for loc in locations:
@@ -151,6 +148,29 @@ def render_cage_distribution(volume, cage,
 
         # render cage
         render_cage(volume, loc, cage, point_spread_function)
+
+
+def filter_locations(volume, mask, locations):
+    '''Filter a list of locations (in world units) depending on whether they
+    are part of the masked-in area.'''
+
+    depth, height, width = volume.data.shape
+    voxel_locations = locations/mask.resolution
+    voxel_locations = voxel_locations.astype(np.int32)
+    mask_depth, mask_height, mask_width = mask.data.shape
+    voxel_locations[:, 0] = np.clip(voxel_locations[:, 0],
+                                    0, mask_depth - 1)
+    voxel_locations[:, 1] = np.clip(voxel_locations[:, 1],
+                                    0, mask_height - 1)
+    voxel_locations[:, 2] = np.clip(voxel_locations[:, 2],
+                                    0, mask_width - 1)
+    indices = (
+            voxel_locations[:, 0]*height*width +
+            voxel_locations[:, 1]*width +
+            voxel_locations[:, 2])
+    valid = mask.data.flatten()[indices].astype(np.bool)
+
+    return locations[valid]
 
 
 def simulate_cages(volume, segmentation,
@@ -181,7 +201,6 @@ def simulate_cages(volume, segmentation,
     count = 0
     # for each segment ID:
     for id_element in id_list:
-        start_time = timeit.default_timer()
         # find appropriate cage and density
         cage = cages.get(id_element)
         density = densities.get(id_element)
@@ -203,8 +222,6 @@ def simulate_cages(volume, segmentation,
         # call render_cage_distribution with the correct cage and density
         render_cage_distribution(volume, cage,
                                  point_spread_function, density, mask)
-        elapsed = timeit.default_timer() - start_time
-        print("elapsed time:" + str(elapsed))
         if(count % 50 == 0):
             print("another 50 done", count)
 
@@ -238,6 +255,7 @@ def simulate_random_cages(
         point_spread_function (PointSpreadFunction): The PSF to use to render
         points.
     '''
+    assert(volume.data.min() >= 0 and volume.data.max() <= 1)
 
     id_list = np.unique(segmentation.data)
     id_list = id_list[np.nonzero(id_list)]
