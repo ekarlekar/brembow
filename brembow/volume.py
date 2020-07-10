@@ -1,3 +1,5 @@
+import numpy as np
+
 
 class Volume:
     '''A class representing a 3D volume of data.
@@ -9,4 +11,4 @@ class Volume:
 
     def __init__(self, data, resolution):
         self.data = data
-        self.resolution = resolution
+        self.resolution = np.array(resolution)
