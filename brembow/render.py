@@ -192,6 +192,7 @@ def simulate_cages(volume, segmentation,
         point-spread-function.
     '''
     # which IDs do we have in the segmentation? (can we use numpy?)
+    assert(volume.data.min() >= 0 and volume.data.max() <= 1)
     id_list = np.unique(segmentation.data)
     id_list = id_list[np.nonzero(id_list)]
 
@@ -224,6 +225,7 @@ def simulate_cages(volume, segmentation,
             print("another 50 done", count)
 
         count += 1
+    return volume
 
 
 def simulate_random_cages(
