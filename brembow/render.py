@@ -1,4 +1,5 @@
 from .volume import Volume
+from funlib.segment.arrays import replace_values
 import numpy as np
 import random
 
@@ -234,7 +235,9 @@ def simulate_random_cages(
         cages,
         min_density,
         max_density,
-        point_spread_function):
+        point_spread_function,
+        return_cage_map=False,
+        return_density_map=False):
     '''Randomly render cages with a range of densities for each segment into a
     volume.
 
@@ -273,3 +276,33 @@ def simulate_random_cages(
         random_cages,
         random_densities,
         point_spread_function)
+
+    ret = (,)
+
+    if return_cage_map:
+
+        # replace segmentation IDs with cage IDs
+        cage_map = replace_values(
+            segmentation.data,
+            id_list,
+            [random_cages[i] + 1 for i in id_list])
+
+        ret = ret + (cage_map,)
+
+    if return_density_map:
+
+        densities = np.array(
+            [random_densities[i] for i in id_list],
+            dtype=np.float64)
+
+        # (almost) the same for the density map:
+        density_map = replace_values(
+            segmentation.data.astype(np.uint64),
+            id_list.astype(np.uint64),
+            densities.view(np.uint64)).view(np.float64)
+        density_map = density_map.astype(np.float32)
+
+        ret = ret + (density_map,)
+
+    if len(ret) > 0:
+        return ret
