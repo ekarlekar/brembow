@@ -1,15 +1,7 @@
 import numpy as np
-from brembow import (simulate_random_cages,
-                     render_points,
-                     render_cage,
-                     render_cage_distribution,
-                     simulate_cages)
-from brembow import Cage
+from brembow import simulate_random_cages
 from brembow import Volume
-from brembow import PointSpreadFunction, GaussianPSF
-import zarr
 import gunpowder as gp
-import random
 
 
 class SimulateCages(gp.BatchFilter):
@@ -21,117 +13,124 @@ class SimulateCages(gp.BatchFilter):
 
             raw (ArrayKey): ArrayKey that points to the volume to render to.
 
-            seg (Volume object): A segmentation of the volume. The segmentation
-            is expected to be int valued with values between 1 and n. 0 will be
-            treated as background.
-
-            res (float): The resolution of volume.
+            seg (ArrayKey): ArrayKey that points to a segmentation of the
+            volume. The segmentation is expected to be int valued with values
+            between 1 and n. 0 will be treated as background.
 
             psf (PointSpreadFunction): The PSF to use to render points.
 
-            density_rang (tuple of floats): The min and max density to
+            density_range (tuple of floats): The min and max density to
             uniformly choose from.
 
             cages (list of Cages): A list of cages to randomly select from.
-
         '''
     def __init__(
             self,
             raw,
             seg,
-            res,
+            cage_map,
+            density_map,
             psf,
             density_range,
             cages):
 
+        # High-level summary:
+        #
+        # 1. request raw and segmentation (of same size)
+        # 2. change raw (in-place) by rendering cages
+        # 3. provide two maps: cages and densities
+        #
+        # Sizes of arrays and requests:
+        #
+        # In general, a request to this node could look like this:
+        #
+        #  raw      :  |---------------------|
+        #  cages map:        |---------|
+        #
+        # (maybe also:)
+        #  seg      :        |---------|
+        #  dens. map:        |---------|
+        #
+        # To produce the maps and update the raw array, our node needs:
+        #
+        #  raw      :  |---------------------|
+        #  seg      :  |---------------------|
+
         self.raw = raw
         self.seg = seg
-        self.res = res
-        self.cage_ids = {}
-        self.densities = {}
+        self.cage_map = cage_map
+        self.density_map = density_map
         self.psf = psf
         self.min_density, self.max_density = density_range
         self.cages = cages
 
-        id_list = np.unique(self.seg.data)
-        id_list = id_list[np.nonzero(id_list)]
+    def setup(self):
 
-        for id_element in id_list:
-            self.cage_ids[id_element] = random.choice(self.cages)
-            self.densities[id_element] = random.uniform(self.min_density,
-                                                        self.max_density)
+        # we provide cage maps everywhere where we have a segmentation:
+        roi = self.spec[self.seg].roi.copy()
+        voxel_size = self.spec[self.seg].voxel_size
+        self.provides(
+            self.cage_map,
+            gp.ArraySpec(roi=roi, dtype=np.uint16, voxel_size=voxel_size))
 
-        # no need for setup since we are modifying the image in-place
+        # same for the density map
+        roi = self.spec[self.seg].roi.copy()
+        self.provides(
+            self.density_map,
+            gp.ArraySpec(roi=roi, dtype=np.float32, voxel_size=voxel_size))
 
     def prepare(self, request):
-        # provide segmentation
-        # currently, all of tiny_raw is ROI
-        # how to change this to be specific to segment ID?
+
         roi = request[self.raw].roi
 
-        print("ROI")
-        print(roi)
+        deps = gp.BatchRequest()
 
-        pass
+        deps[self.raw] = roi
+        deps[self.seg] = roi
+
+        return deps
 
     def process(self, batch, request):
-        data = batch[self.raw].data
 
-        print("DATA")
-        print(data)
+        # get the raw and segmentation arrays from the current batch
+        raw = batch[self.raw]
+        seg = batch[self.seg]
 
-        volume = simulate_cages(Volume(data, self.res),
-                                self.seg, self.cage_ids,
-                                self.densities,
-                                self.psf)
-        batch[self.raw].data = volume.data
+        print(f"RAW: {raw}")
+        print(f"SEG: {seg}")
 
+        # simulate cages, return brembow volumes for raw, cages, and density
+        simulated_raw = Volume(raw.data, raw.spec.voxel_size)
+        cage_map, density_map = simulate_random_cages(
+            simulated_raw,
+            Volume(seg.data, seg.spec.voxel_size),
+            self.cages,
+            self.min_density,
+            self.max_density,
+            self.psf,
+            True,
+            True,
+            0.0)
 
-datafile = zarr.open(
-    '/Users/ekarlekar/Documents/Funke/data/cropped_sample_A.zarr', 'r')
-tiny_seg = datafile['tiny_segmentation'][:]
-resolution = datafile['tiny_raw'].attrs['resolution']
-seg = Volume(tiny_seg, resolution)
+        # create array specs for new gunpowder arrays
+        raw_spec = batch[self.raw].spec.copy()
+        cage_map_spec = batch[self.seg].spec.copy()
+        cage_map_spec.dtype = np.uint64
+        density_map_spec = batch[self.seg].spec.copy()
+        density_map_spec.dtype = np.float32
 
-cage1 = Cage("/Users/ekarlekar/Documents/Funke/data/example_cage")
+        # create arrays and crop to requested size
+        print(cage_map_spec)
+        cage_map_array = gp.Array(data=cage_map, spec=cage_map_spec)
+        cage_map_array = cage_map_array.crop(request[self.cage_map].roi)
+        density_map_array = gp.Array(data=density_map, spec=density_map_spec)
+        density_map_array = density_map_array.crop(
+                                            request[self.density_map].roi)
 
-psf = GaussianPSF(intensity=0.125, sigma=(1.0, 1.0))
-min_density = 2e-5
-max_density = 2e-5
-tiny_raw = gp.ArrayKey('tiny_raw')
-source = gp.ZarrSource(
-    '/Users/ekarlekar/Documents/Funke/data/cropped_sample_A.zarr',
-    {tiny_raw: 'tiny_raw'},
-    {tiny_raw: gp.ArraySpec(interpolatable=True, voxel_size=resolution)}
-)
-print("SOURCE")
-print(source)
+        # create a new batch with processed arrays
+        processed = gp.Batch()
+        processed[self.raw] = gp.Array(data=simulated_raw.data, spec=raw_spec)
+        processed[self.cage_map] = cage_map_array
+        processed[self.density_map] = density_map_array
 
-
-normalize = gp.Normalize(tiny_raw)
-pipeline = (source + normalize + SimulateCages(tiny_raw,
-                                               seg,
-                                               resolution,
-                                               psf,
-                                               (min_density, max_density),
-                                               [cage1]))
-
-print("PIPELINE")
-print(pipeline)
-
-request = gp.BatchRequest()
-
-# how to change this to be specific to segment ID?
-request[tiny_raw] = gp.Roi((0, 0, 0), (400, 4000, 4000))
-
-print("REQUEST")
-print(request)
-
-with gp.build(pipeline):
-    batch = pipeline.request_batch(request)
-
-with zarr.open('testV.zarr', 'w') as f:
-    f['render'] = batch[tiny_raw].data
-    f['render'].attrs['resolution'] = resolution
-
-print("done")
+        return processed
