@@ -206,8 +206,7 @@ def simulate_cages(volume, segmentation,
         density = densities.get(id_element)
 
         if cage is None:
-            print(f"WARNING: segment ID {id_element} does not have a cage "
-                  "associated")
+
             continue
 
         if density is None:
@@ -226,7 +225,6 @@ def simulate_cages(volume, segmentation,
             print("another 50 done", count)
 
         count += 1
-    return volume
 
 
 def simulate_random_cages(
@@ -237,7 +235,8 @@ def simulate_random_cages(
         max_density,
         point_spread_function,
         return_cage_map=False,
-        return_density_map=False):
+        return_density_map=False,
+        no_cage_probability=0.0):
     '''Randomly render cages with a range of densities for each segment into a
     volume.
 
@@ -267,7 +266,13 @@ def simulate_random_cages(
     random_densities = {}
 
     for id_element in id_list:
-        random_cages[id_element] = random.choice(cages)
+        test = random.random()
+
+        if test > no_cage_probability:
+            random_cages[id_element] = random.choice(cages)
+        else:
+            random_cages[id_element] = None
+
         random_densities[id_element] = random.uniform(min_density, max_density)
 
     simulate_cages(
@@ -277,7 +282,7 @@ def simulate_random_cages(
         random_densities,
         point_spread_function)
 
-    ret = (,)
+    ret = ()
 
     if return_cage_map:
 
@@ -285,7 +290,7 @@ def simulate_random_cages(
         cage_map = replace_values(
             segmentation.data,
             id_list,
-            [random_cages[i] + 1 for i in id_list])
+            [i + 1 for i in id_list])
 
         ret = ret + (cage_map,)
 
