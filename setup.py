@@ -8,6 +8,7 @@ setup(
         author_email='esha.karlekar@gmail.com',
         license='MIT',
         packages=[
-            'brembow'
+            'brembow',
+            'brembow.gp'
         ]
 )
