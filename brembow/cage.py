@@ -8,8 +8,27 @@ from scipy.spatial.transform import Rotation as R
 
 
 class Cage:
+    '''A cage represented by a list of locations.
+
+    Args:
+
+        cage_folder (``string``):
+
+            Directory containing the PDB files for this cage.
+
+        cage_id (``int``):
+
+            A unique ID to refer to this cage, has to be larger than 0.
+    '''
+
     # list of locations in 3D
-    def __init__(self, cage_folder):
+    def __init__(self, cage_folder, cage_id):
+
+        assert cage_id > 0, (
+            "Cage IDs should be greater than 0 (0 is used internally as 'no "
+            "cage')")
+
+        self.cage_id = cage_id
         self.locations = self.get_atom_locations(cage_folder, "HETATM", "U")
         self.rotation_changed = False
         self.rotated = self.locations
