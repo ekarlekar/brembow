@@ -270,10 +270,11 @@ def simulate_random_cages(
 
         if test > no_cage_probability:
             random_cages[id_element] = random.choice(cages)
+            random_densities[id_element] = random.uniform(min_density, max_density)
         else:
             random_cages[id_element] = None
+            random_densities[id_element] = 0
 
-        random_densities[id_element] = random.uniform(min_density, max_density)
 
     simulate_cages(
         volume,
@@ -290,7 +291,10 @@ def simulate_random_cages(
         cage_map = replace_values(
             segmentation.data,
             id_list,
-            [i + 1 for i in id_list])
+            [
+                random_cages[i].cage_id if random_cages[i] else 0
+                for i in id_list
+            ])
 
         ret = ret + (cage_map,)
 
