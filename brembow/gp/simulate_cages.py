@@ -32,7 +32,8 @@ class SimulateCages(gp.BatchFilter):
             density_map,
             psf,
             density_range,
-            cages):
+            cages,
+            no_cage_probability=0.0):
 
         # High-level summary:
         #
@@ -63,6 +64,7 @@ class SimulateCages(gp.BatchFilter):
         self.psf = psf
         self.min_density, self.max_density = density_range
         self.cages = cages
+        self.no_cage_probability = no_cage_probability
 
     def setup(self):
 
@@ -110,7 +112,7 @@ class SimulateCages(gp.BatchFilter):
             self.psf,
             True,
             True,
-            0.0)
+            self.no_cage_probability)
 
         # create array specs for new gunpowder arrays
         raw_spec = batch[self.raw].spec.copy()
