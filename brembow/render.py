@@ -137,8 +137,6 @@ def render_cage_distribution(volume, cage,
     if(mask is not None):
         locations = filter_locations(volume, mask, locations)
 
-    print("len of locations: " + str(len(locations)))
-
     # for each location:
     for loc in locations:
 
@@ -197,8 +195,6 @@ def simulate_cages(volume, segmentation,
     id_list = np.unique(segmentation.data)
     id_list = id_list[np.nonzero(id_list)]
 
-    print("len of id_list" + str(len(id_list)))
-    count = 0
     # for each segment ID:
     for id_element in id_list:
         # find appropriate cage and density
@@ -217,14 +213,11 @@ def simulate_cages(volume, segmentation,
         # create a binary mask
         mask_data = np.where(segmentation.data == id_element, 1, 0)
         mask = Volume(mask_data, segmentation.resolution)
-        print(str(density), str(cage))
+
         # call render_cage_distribution with the correct cage and density
         render_cage_distribution(volume, cage,
                                  point_spread_function, density, mask)
-        if(count % 50 == 0):
-            print("another 50 done", count)
 
-        count += 1
 
 
 def simulate_random_cages(
