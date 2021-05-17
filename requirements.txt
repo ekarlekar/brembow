@@ -1,2 +1,8 @@
 cython
 -e git://github.com/funkelab/funlib.segment#egg=funlib.segment
+pyquaternion==0.9.5
+biopandas==0.2.7
+gunpowder
+daisy
+zarr
+
