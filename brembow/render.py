@@ -4,7 +4,12 @@ import numpy as np
 import random
 
 
-def render_points(resolution, image, locations, point_spread_function):
+def render_points(
+        resolution,
+        image,
+        locations,
+        intensities,
+        point_spread_function):
     '''Render a list of points with a Gaussian point-spread-function into a 2D
     image. This rendering is subtractive with respect to the contents already
     present in the image.
@@ -19,9 +24,14 @@ def render_points(resolution, image, locations, point_spread_function):
         locations (list of tuple of floats): The locations (in pixels)
         where to place the points.
 
+        intensities (array of float): The intensities with which to render the
+        points given by ``locations``.
+
         point_spread_function (PointSpreadFunction): The point-spread function
         to use.
     '''
+
+    assert locations.shape[0] == intensities.shape[0]
 
     # for each point, change point image to 1.0
     locations = np.array(locations)/resolution
@@ -47,7 +57,7 @@ def render_points(resolution, image, locations, point_spread_function):
     point_image = np.zeros_like(image)
 
     # x, y = int(location[0]/resolution), int(location[1]/resolution)
-    point_image[tuple(coords)] = 1.0
+    np.add.at(point_image, tuple(coords), intensities)
 
     # blurs image according to appropriate PSF
     point_spread_function.apply_psf(point_image)
@@ -59,7 +69,7 @@ def render_points(resolution, image, locations, point_spread_function):
     np.clip(image, 0.0, 1.0, out=image)
 
 
-def render_cage(volume, location, cage, point_spread_function):
+def render_cage(volume, location, cage, fm_intensity, point_spread_function):
     '''Render a cage with a Gaussian point-spread-function into a 3D volume.
     This rendering is subtractive with respect to the contents already present
     in the volume.
@@ -74,13 +84,17 @@ def render_cage(volume, location, cage, point_spread_function):
 
         cage (`class:Cage`): The cage to render.
 
-        sigma (float): The standard deviation of the Gaussian
-        point-spread-function.
+        fm_intensity (float): Render intensity for element 100 (Fermium), to be
+        used as reference point for cubic intensity transfer function.
+
+        point_spread_function (PointSpreadFunction): The PSF to use to render
+        points.
     '''
 
     # normalizing points in relation to cage loc
     pre_norm_cage_loc = np.array(cage.get_locations())
-    cage_point_locs = pre_norm_cage_loc + location
+    atom_locations = pre_norm_cage_loc + location
+    atomic_numbers = cage.get_atomic_numbers()
 
     depth, height, width = volume.data.shape
     resolution = volume.resolution
@@ -89,23 +103,49 @@ def render_cage(volume, location, cage, point_spread_function):
         zbegin, zend = zplane*resolution[0], (zplane + 1)*resolution[0]
         ybegin, yend = 0, height*resolution[1]
         xbegin, xend = 0, height*resolution[2]
-        valid_locs = cage_point_locs[(cage_point_locs[:, 0] >= zbegin) &
-                                     (cage_point_locs[:, 0] < zend) &
-                                     (cage_point_locs[:, 1] >= ybegin) &
-                                     (cage_point_locs[:, 1] < yend) &
-                                     (cage_point_locs[:, 2] >= xbegin) &
-                                     (cage_point_locs[:, 2] < xend)]
+        visible_atoms = (
+            (atom_locations[:, 0] >= zbegin) &
+            (atom_locations[:, 0] < zend) &
+            (atom_locations[:, 1] >= ybegin) &
+            (atom_locations[:, 1] < yend) &
+            (atom_locations[:, 2] >= xbegin) &
+            (atom_locations[:, 2] < xend)
+        )
+        valid_locs = atom_locations[visible_atoms]
+        valid_atomic_numbers = atomic_numbers[visible_atoms]
+
         if len(valid_locs) == 0:
             continue
+
+        valid_intensities = compute_intensities(
+            fm_intensity,
+            valid_atomic_numbers)
 
         render_points(volume.resolution[1:3],
                       volume.data[zplane, :, :],
                       valid_locs[:, 1:3],
+                      valid_intensities,
                       point_spread_function)
 
 
-def render_cage_distribution(volume, cage,
-                             point_spread_function, density, mask=None):
+def compute_intensities(fm_intensity, atomic_numbers):
+
+    # 0 -> 0
+    # 100 -> FmI  (intensity of Fm)
+    #
+    # y = α x^3
+    # FmI = α 100^3 ⇒ α = FmI/100^3
+
+    return fm_intensity/(100**3) * atomic_numbers**3
+
+
+def render_cage_distribution(
+        volume,
+        cage,
+        fm_intensity,
+        point_spread_function,
+        density,
+        mask=None):
     '''Renders randomly oriented copies of the given cage with the given
     density into volume.
 
@@ -118,6 +158,12 @@ def render_cage_distribution(volume, cage,
 
         sigma (float): The standard deviation of the Gaussian
         point-spread-function.
+
+        fm_intensity (float): Render intensity for element 100 (Fermium), to be
+        used as reference point for cubic intensity transfer function.
+
+        point_spread_function (PointSpreadFunction): The PSF to use to render
+        points.
 
         density (float): The density of cages in number of cages per cubic
         micron.
@@ -144,7 +190,7 @@ def render_cage_distribution(volume, cage,
         cage.set_random_rotation()
 
         # render cage
-        render_cage(volume, loc, cage, point_spread_function)
+        render_cage(volume, loc, cage, fm_intensity, point_spread_function)
 
 
 def filter_locations(volume, mask, locations):
@@ -170,8 +216,13 @@ def filter_locations(volume, mask, locations):
     return locations[valid]
 
 
-def simulate_cages(volume, segmentation,
-                   cages, densities, point_spread_function):
+def simulate_cages(
+        volume,
+        segmentation,
+        cages,
+        densities,
+        fm_intensity,
+        point_spread_function):
     '''Render different cages with different densities into each segment.
 
     Args:
@@ -187,8 +238,11 @@ def simulate_cages(volume, segmentation,
 
         densities (dict from int -> float): The density of cages per segment.
 
-        sigma (float): The standard deviation of the Gaussian
-        point-spread-function.
+        fm_intensity (float): Render intensity for element 100 (Fermium), to be
+        used as reference point for cubic intensity transfer function.
+
+        point_spread_function (PointSpreadFunction): The PSF to use to render
+        points.
     '''
     # which IDs do we have in the segmentation? (can we use numpy?)
     assert(volume.data.min() >= 0 and volume.data.max() <= 1)
@@ -215,9 +269,13 @@ def simulate_cages(volume, segmentation,
         mask = Volume(mask_data, segmentation.resolution)
 
         # call render_cage_distribution with the correct cage and density
-        render_cage_distribution(volume, cage,
-                                 point_spread_function, density, mask)
-
+        render_cage_distribution(
+            volume,
+            cage,
+            fm_intensity,
+            point_spread_function,
+            density,
+            mask)
 
 
 def simulate_random_cages(
@@ -226,6 +284,7 @@ def simulate_random_cages(
         cages,
         min_density,
         max_density,
+        fm_intensity,
         point_spread_function,
         return_cage_map=False,
         return_density_map=False,
@@ -247,8 +306,20 @@ def simulate_random_cages(
         min_density, max_density (float): The minimum and maximum density to
         uniformly choose from.
 
+        fm_intensity (float): Render intensity for element 100 (Fermium), to be
+        used as reference point for cubic intensity transfer function.
+
         point_spread_function (PointSpreadFunction): The PSF to use to render
         points.
+
+        return_cage_map (bool): Return a map of which segment contains which
+        type of cage (as an integer).
+
+        return_density_map (bool): Return a map of the cage densities per
+        segment.
+
+        no_cage_probability (float): The probability of expressing no cage, per
+        segment.
     '''
     assert(volume.data.min() >= 0 and volume.data.max() <= 1)
 
@@ -274,6 +345,7 @@ def simulate_random_cages(
         segmentation,
         random_cages,
         random_densities,
+        fm_intensity,
         point_spread_function)
 
     ret = ()

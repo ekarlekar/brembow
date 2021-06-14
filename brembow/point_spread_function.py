@@ -14,8 +14,7 @@ class PointSpreadFunction:
         pass
 
 class GaussianPSF(PointSpreadFunction):
-    def __init__(self, intensity, sigma):
-        self.intensity = intensity
+    def __init__(self, sigma):
         self.sigma = np.array(sigma)
 
     def apply_psf(self, point_image):
@@ -24,7 +23,6 @@ class GaussianPSF(PointSpreadFunction):
             self.sigma,
             output=point_image,
             truncate=3.0)
-        point_image *= self.intensity
 
     def get_radius(self):
         return 3.0 * self.sigma

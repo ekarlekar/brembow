@@ -24,7 +24,7 @@ class Cage:
             "cage')")
 
         self.cage_id = cage_id
-        locations, atomic_numbers, atom_types = self.get_atom_locations(
+        locations, atomic_numbers, atom_types = self.__get_atom_locations(
             cage_folder)
         self.locations = locations
         self.atomic_numbers = atomic_numbers
@@ -46,11 +46,14 @@ class Cage:
 
         return self.rotated
 
+    def get_atomic_numbers(self):
+        return self.atomic_numbers
+
     def set_random_rotation(self):
         self.quaternion = Quaternion.random()
         self.rotation_changed = True
 
-    def get_atom_locations(self, cage_folder):
+    def __get_atom_locations(self, cage_folder):
 
         # Creates list of .pdb file names
         pdb_files = glob.glob(os.path.join(cage_folder, '*.pdb'))
