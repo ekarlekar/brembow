@@ -50,14 +50,11 @@ def render_points(
         bounding_box_min[1]:bounding_box_max[1] + 1]
 
     locations -= bounding_box_min
-    x_values = locations[:, 0]
-    y_values = locations[:, 1]
-    coords = [tuple(x_values), tuple(y_values)]
 
     point_image = np.zeros_like(image)
 
     # x, y = int(location[0]/resolution), int(location[1]/resolution)
-    np.add.at(point_image, tuple(coords), intensities)
+    np.add.at(point_image, [locations[:, 0], locations[:, 1]], intensities)
 
     # blurs image according to appropriate PSF
     point_spread_function.apply_psf(point_image)
